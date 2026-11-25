@@ -1,0 +1,57 @@
+#!/bin/bash
+# phone                 -> one phone: start it; several: show a menu
+# phone pixel           -> filter by name (case-insensitive)
+# phone usb / phone wifi-> only USB / only wireless
+# phone all             -> one scrcpy window per entry
+# PHONE_ASK=1 phone     -> always show the menu
+# extra args go to scrcpy, e.g. phone usb --turn-screen-off
+#
+# Wireless phones are found via Avahi (mDNS), because the Manjaro/Arch
+# android-tools adb is built without mDNS support and the wireless
+# debugging port changes on every start.
+
+wireless() {
+  avahi-browse -rpt _adb-tls-connect._tcp 2>/dev/null | awk -F';' '/^=/ && $3=="IPv4" {
+    n=$4
+    if (match($10, /given_name=[^"]*/)) n=substr($10, RSTART+11, RLENGTH-11)
+    print n" (WiFi);"$8":"$9
+  }'
+}
+
+usb() {
+  adb devices -l 2>/dev/null | awk 'NR>1 && $2=="device" && / usb:/ {
+    n=$1
+    for (i=3; i<=NF; i++) if ($i ~ /^model:/) { n=substr($i,7); gsub(/_/," ",n) }
+    print n" (USB);"$1
+  }'
+}
+
+mapfile -t devs < <({ usb; wireless; } | sort -u)
+
+(( ${#devs[@]} )) || { echo "No phones found – USB connected or Wireless debugging on?"; exit 1; }
+
+filter=""
+[[ $1 && $1 != -* ]] && { filter=$1; shift; }
+
+start() {   # $1 = "name;serial-or-ip:port", rest = scrcpy options
+  local name=${1%%;*} addr=${1#*;}
+  if [[ $addr == *:* ]]; then   # wireless: connect first
+    adb connect "$addr" >/dev/null 2>&1 || adb connect "$addr" >/dev/null
+  fi
+  scrcpy -s "$addr" --window-title="$name" "${@:2}"
+}
+
+if [[ $filter == all ]]; then
+  for d in "${devs[@]}"; do start "$d" "$@" & done
+  wait; exit
+fi
+
+[[ $filter ]] && mapfile -t devs < <(printf '%s\n' "${devs[@]}" | grep -i -- "$filter")
+
+case ${#devs[@]} in
+  0) echo "No phone matches '$filter'"; exit 1 ;;
+  1) [[ $PHONE_ASK ]] || { start "${devs[0]}" "$@"; exit; } ;&
+  *) PS3="Phone: "
+     select d in "${devs[@]%%;*}"; do [[ $d ]] && break; done
+     start "${devs[REPLY-1]}" "$@" ;;
+esac

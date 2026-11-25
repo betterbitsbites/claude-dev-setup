@@ -147,6 +147,33 @@ scrcpy               # Bildschirm spiegeln/steuern
 
 Für App-Builds (Gradle) optional das SDK aus dem AUR: `yay -S android-sdk-cmdline-tools-latest`.
 
+### Wireless Debugging & Handy-Auswahl (`bin/phone`)
+
+Der Port von *Wireless Debugging* ändert sich bei jedem Einschalten, und das `adb` aus `android-tools` ist ohne mDNS gebaut (`adb mdns` geht nicht). Das Skript [`bin/phone`](bin/phone) findet die Handys deshalb per Avahi (WLAN) bzw. `adb devices` (USB), zeigt bei mehreren ein Auswahlmenü und startet `scrcpy`.
+
+```bash
+sudo pacman -S --needed avahi
+sudo systemctl enable --now avahi-daemon
+
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/betterbitsbites/claude-dev-setup/main/bin/phone \
+  -o ~/.local/bin/phone
+chmod +x ~/.local/bin/phone
+```
+
+Einmalig pro Handy koppeln: *Entwickleroptionen → Wireless Debugging → Gerät über Kopplungscode koppeln*, dann `adb pair <ip>:<port>` mit dem angezeigten Code.
+
+| Aufruf | Wirkung |
+|---|---|
+| `phone` | ein Handy → direkt starten, mehrere → Menü |
+| `phone pixel` | nach Name filtern |
+| `phone usb` / `phone wifi` | nur USB / nur WLAN |
+| `phone all` | ein scrcpy-Fenster pro Gerät |
+| `PHONE_ASK=1 phone` | Menü immer anzeigen |
+| `phone usb --turn-screen-off` | weitere Optionen gehen an scrcpy |
+
+Hinweise: Handy und PC müssen im selben Subnetz/VLAN sein (sonst Avahi-Reflector auf der pfSense). Im Handy unter *Über das Telefon → Gerätename* eindeutige Namen vergeben. Feste DHCP-Leases halten die IPs stabil.
+
 ---
 
 ## 10. Feinschliff für Claude Code
